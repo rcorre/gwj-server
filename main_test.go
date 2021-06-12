@@ -50,22 +50,22 @@ func TestV1Users(t *testing.T) {
 		assert.Equal(t, w.Code, http.StatusOK)
 		var res []string
 		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
-			t.Error(err)
+			t.Errorf("Failed to unmarshal %s, %v", w.Body.Bytes(), err)
 		}
 		return res
 	}
-	put := func() {
+	put := func(name string) {
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PUT", "/v1/users", nil)
+		r := httptest.NewRequest("PUT", "/v1/users/"+name, nil)
 		v1.ServeHTTP(w, r)
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, "", w.Body.String())
+		assert.NotEmpty(t, w.Body.String())
 	}
 
 	// no records yet
 	assert.Equal(t, []string{}, get())
 
 	// one record
-	put()
+	put("foo")
 	assert.Equal(t, []string{"foo"}, get())
 }

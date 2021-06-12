@@ -80,13 +80,18 @@ func unmarshal(r io.Reader, out interface{}) error {
 	}
 */
 
-func (v1 *v1API) getUsers(w http.ResponseWriter, r *http.Request) ([]string, error) {
+func (v1 *v1API) getUsers(r *http.Request) (interface{}, error) {
 	return v1.db.GetUsers()
 }
 
-func (v1 *v1API) putUser(w http.ResponseWriter, r *http.Request) (interface{}, error) {
-	err := v1.db.AddUser("foo")
-	return nil, err
+func (v1 *v1API) putUser(r *http.Request) (interface{}, error) {
+	name := r.URL.Path[len("/v1/users/"):]
+	log.Println("putUser:", name)
+	if name == "" {
+		return "", fmt.Errorf("Missing name")
+	}
+	v1.db.AddUser(name)
+	return "auth", nil
 }
 
 /*
@@ -127,32 +132,39 @@ func (v1 *v1API) login(name, auth string) ([]string, error) {
 }
 */
 
+func handle(w http.ResponseWriter, r *http.Request, f func(*http.Request) (interface{}, error)) {
+	if result, err := f(r); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	} else if result != nil {
+		if body, err := json.Marshal(result); err != nil {
+			http.Error(w, "Failed to marshal response", http.StatusInternalServerError)
+		} else {
+			w.Write(body)
+		}
+	} else {
+		w.WriteHeader(200)
+	}
+}
+
 func newMux(db db) *http.ServeMux {
 	mux := http.NewServeMux()
 	v1 := &v1API{db: db}
 
 	mux.HandleFunc("/v1/users", func(w http.ResponseWriter, r *http.Request) {
-		var result interface{}
-		var err error
 		if r.Method == http.MethodGet {
-			result, err = v1.getUsers(w, r)
-		} else if r.Method == http.MethodPut {
-			result, err = v1.putUser(w, r)
+			handle(w, r, v1.getUsers)
+		} else {
+			http.Error(w, "", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/v1/users/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			handle(w, r, v1.putUser)
 		} else {
 			http.Error(w, "", http.StatusMethodNotAllowed)
 		}
 
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		} else if result != nil {
-			if body, err := json.Marshal(result); err != nil {
-				http.Error(w, "Failed to marshal response", http.StatusInternalServerError)
-			} else {
-				w.Write(body)
-			}
-		} else {
-			w.WriteHeader(200)
-		}
 	})
 
 	return mux
