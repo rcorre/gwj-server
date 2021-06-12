@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	_ "github.com/lib/pq"
 )
@@ -62,6 +63,12 @@ func (d *db) AddUser(name, auth string) error {
 	return err
 }
 
+func (d *db) AuthUser(user, auth string) (bool, error) {
+	var expected string
+	err := d.QueryRow("SELECT auth from users where name = $1", user).Scan(&expected)
+	return expected == auth, err
+}
+
 type v1API struct {
 	db db
 }
@@ -101,6 +108,14 @@ func (v1 *v1API) putUser(r *http.Request) (interface{}, error) {
 	auth := base64.StdEncoding.EncodeToString(buf)
 	err = v1.db.AddUser(name, auth)
 	return auth, nil
+}
+
+func (v1 *v1API) getAuth(r *http.Request) (interface{}, error) {
+	parts := strings.Split(r.Header.Get("Authorization"), ":")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid auth")
+	}
+	return v1.db.AuthUser(parts[0], parts[1])
 }
 
 /*
@@ -158,6 +173,14 @@ func handle(w http.ResponseWriter, r *http.Request, f func(*http.Request) (inter
 func newMux(db db) *http.ServeMux {
 	mux := http.NewServeMux()
 	v1 := &v1API{db: db}
+
+	mux.HandleFunc("/v1/auth", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			handle(w, r, v1.getAuth)
+		} else {
+			http.Error(w, "", http.StatusMethodNotAllowed)
+		}
+	})
 
 	mux.HandleFunc("/v1/users", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
