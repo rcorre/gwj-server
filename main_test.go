@@ -65,7 +65,9 @@ func TestV1Users(t *testing.T) {
 	// no records yet
 	assert.Equal(t, []string{}, get())
 
-	// one record
 	put("foo")
-	assert.Equal(t, []string{"foo"}, get())
+	assert.EqualValues(t, []string{"foo"}, get())
+
+	put("bar")
+	assert.EqualValues(t, []string{"foo", "bar"}, get())
 }

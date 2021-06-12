@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,7 +23,8 @@ func (d *db) Init() error {
 	if _, err := d.Exec(
 		"CREATE TABLE IF NOT EXISTS users(" +
 			"id serial PRIMARY KEY," +
-			"name varchar NOT NULL UNIQUE" +
+			"name varchar NOT NULL UNIQUE," +
+			"auth varchar NOT NULL" +
 			")",
 	); err != nil {
 		return err
@@ -48,14 +51,14 @@ func (d *db) GetUsers() ([]string, error) {
 	return res, rows.Err()
 }
 
-func (d *db) AddUser(name string) error {
-	stmt, err := d.Prepare("INSERT INTO users(name) VALUES($1)")
+func (d *db) AddUser(name, auth string) error {
+	stmt, err := d.Prepare("INSERT INTO users(name, auth) VALUES($1, $2)")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(name)
+	_, err = stmt.Exec(name, auth)
 	return err
 }
 
@@ -90,8 +93,14 @@ func (v1 *v1API) putUser(r *http.Request) (interface{}, error) {
 	if name == "" {
 		return "", fmt.Errorf("Missing name")
 	}
-	v1.db.AddUser(name)
-	return "auth", nil
+	buf := make([]byte, 32)
+	_, err := rand.Read(buf)
+	if err != nil {
+		return "", err
+	}
+	auth := base64.StdEncoding.EncodeToString(buf)
+	err = v1.db.AddUser(name, auth)
+	return auth, nil
 }
 
 /*
