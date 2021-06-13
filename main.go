@@ -107,7 +107,7 @@ func (v1 *v1API) putUser(r *http.Request) (interface{}, error) {
 	}
 	auth := base64.StdEncoding.EncodeToString(buf)
 	err = v1.db.AddUser(name, auth)
-	return auth, nil
+	return auth, err
 }
 
 func (v1 *v1API) getAuth(r *http.Request) (interface{}, error) {
@@ -158,7 +158,7 @@ func (v1 *v1API) login(name, auth string) ([]string, error) {
 
 func handle(w http.ResponseWriter, r *http.Request, f func(*http.Request) (interface{}, error)) {
 	if result, err := f(r); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf(`"%v"`, err), http.StatusInternalServerError)
 	} else if result != nil {
 		if body, err := json.Marshal(result); err != nil {
 			http.Error(w, "Failed to marshal response", http.StatusInternalServerError)
