@@ -96,7 +96,6 @@ func (v1 *v1API) getUsers(r *http.Request) (interface{}, error) {
 
 func (v1 *v1API) putUser(r *http.Request) (interface{}, error) {
 	name := r.URL.Path[len("/v1/users/"):]
-	log.Println("putUser:", name)
 	if name == "" {
 		return "", fmt.Errorf("Missing name")
 	}
@@ -107,6 +106,7 @@ func (v1 *v1API) putUser(r *http.Request) (interface{}, error) {
 	}
 	auth := base64.StdEncoding.EncodeToString(buf)
 	err = v1.db.AddUser(name, auth)
+	log.Println("Added user:", name)
 	return auth, err
 }
 
