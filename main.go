@@ -136,6 +136,7 @@ func (s *server) authOk(auth string, id int64) bool {
 		log.Println("Error getting auth: ", err)
 		return false
 	}
+	println("checking", expected, auth)
 	return expected == auth
 }
 
