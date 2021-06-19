@@ -116,14 +116,27 @@ func (s *server) createTables() error {
 	return nil
 }
 
+func getPlayerID(p httprouter.Params) (int64, error) {
+	return strconv.ParseInt(p.ByName("player_id"), 10, 64)
+}
+
 func getPlayerPlotID(p httprouter.Params) (int64, int64, error) {
-	playerID, err := strconv.ParseInt(p.ByName("player_id"), 10, 64)
+	playerID, err := getPlayerID(p)
 	if err != nil {
 		return 0, 0, err
 	}
 
 	plotID, err := strconv.ParseInt(p.ByName("plot_id"), 10, 64)
 	return playerID, plotID, err
+}
+
+func (s *server) authOk(auth string, id int64) bool {
+	var expected string
+	if err := s.db.QueryRow("SELECT auth from players where id = $1", id).Scan(&expected); err != nil {
+		log.Println("Error getting auth: ", err)
+		return false
+	}
+	return expected == auth
 }
 
 func (s *server) getPlot(_ []byte, p httprouter.Params) (interface{}, error) {
@@ -263,7 +276,22 @@ func (s *server) addPlayer(body []byte, _ httprouter.Params) (interface{}, error
 	}, nil
 }
 
-func handle(handler func(body []byte, params httprouter.Params) (interface{}, error)) httprouter.Handle {
+func (s *server) checkAuth(h httprouter.Handle) httprouter.Handle {
+	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+		auth := r.Header.Get("Authorization")
+		if id, err := getPlayerID(ps); err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		} else if !s.authOk(auth, id) {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		} else {
+			h(w, r, ps)
+		}
+	}
+}
+
+func handle(
+	handler func(body []byte, params httprouter.Params) (interface{}, error),
+) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		if b, err := ioutil.ReadAll(r.Body); err != nil {
 			http.Error(w, fmt.Sprintf(`"%v"`, err), http.StatusBadRequest)
@@ -299,7 +327,7 @@ func newServer(c clock) http.Handler {
 	router := httprouter.New()
 	router.GET("/players", handle(s.getPlayers))
 	router.GET("/players/:player_id/plots/:plot_id", handle(s.getPlot))
-	router.PUT("/players/:player_id/plots/:plot_id", handle(s.putPlot))
+	router.PUT("/players/:player_id/plots/:plot_id", s.checkAuth(handle(s.putPlot)))
 	router.POST("/players", handle(s.addPlayer))
 
 	return router
