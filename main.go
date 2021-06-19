@@ -23,8 +23,18 @@ const (
 	ITEM_CARROT_SEED
 )
 
+// for mocking time in tests
+type clock interface {
+	Now() time.Time
+}
+
+type realClock struct{}
+
+func (_ *realClock) Now() time.Time { return time.Now() }
+
 type server struct {
-	db *sql.DB
+	db    *sql.DB
+	clock clock
 }
 
 type plot struct {
@@ -39,8 +49,8 @@ type player struct {
 	Plots map[int64]plot
 }
 
-func setTransitionTime(p *plot) error {
-	now := time.Now()
+func (s *server) setTransitionTime(p *plot) error {
+	now := s.clock.Now()
 	switch p.Item {
 	case ITEM_CARROT_SEED:
 		p.Transition = now.Add(time.Second * 10).Unix()
@@ -118,7 +128,7 @@ func (s *server) putPlot(req []byte, p httprouter.Params) (interface{}, error) {
 		return nil, err
 	}
 
-	if err := setTransitionTime(&newPlot); err != nil {
+	if err := s.setTransitionTime(&newPlot); err != nil {
 		return nil, err
 	}
 
@@ -239,7 +249,7 @@ func handle(handler func(body []byte, params httprouter.Params) (interface{}, er
 	}
 }
 
-func newServer() http.Handler {
+func newServer(c clock) http.Handler {
 	dbURL, ok := os.LookupEnv("DATABASE_URL")
 	if !ok {
 		panic("DATABASE_URL not set")
@@ -251,7 +261,7 @@ func newServer() http.Handler {
 	}
 	log.Println("Connected to DB")
 
-	s := &server{db: db}
+	s := &server{db: db, clock: c}
 	s.createTables()
 
 	router := httprouter.New()
@@ -271,7 +281,7 @@ func main() {
 	}
 
 	server := &http.Server{
-		Handler: newServer(),
+		Handler: newServer(&realClock{}),
 		Addr:    ":" + port,
 	}
 	log.Println("Listening on", port)

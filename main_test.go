@@ -14,13 +14,20 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+type fakeClock struct {
+	now int64
+}
+
+func (f *fakeClock) Now() time.Time { return time.Unix(f.now, 0) }
+
 type Suite struct {
 	suite.Suite
 	server http.Handler
+	clock  fakeClock
 }
 
 func (s *Suite) SetupTest() {
-	s.server = newServer()
+	s.server = newServer(&s.clock)
 }
 
 func TestExampleTestSuite(t *testing.T) {
@@ -56,6 +63,9 @@ func (s *Suite) put(path string, body interface{}, out interface{}) int {
 }
 
 func (s *Suite) TestPlayers() {
+	startTime := int64(1600000000)
+	s.clock.now = startTime
+
 	emptyPlots := map[int64]plot{
 		0: {ID: 0},
 		1: {ID: 1},
@@ -107,12 +117,11 @@ func (s *Suite) TestPlayers() {
 	s.Equal(s.get("/players/1/plots/5", &pl), 200)
 	s.Equal(pl, plot{ID: 5})
 
-	now := time.Now()
 	pl.Item = ITEM_CARROT_SEED
 	s.Equal(s.put("/players/1/plots/5", &pl, &pl), 200)
 	s.Equal(pl, plot{
 		ID:         5,
 		Item:       ITEM_CARROT_SEED,
-		Transition: now.Add(10 * time.Second).Unix(),
+		Transition: startTime + 10,
 	})
 }
