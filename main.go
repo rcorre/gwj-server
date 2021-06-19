@@ -293,7 +293,7 @@ func handle(
 	handler func(body []byte, params httprouter.Params) (interface{}, error),
 ) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		println("handling", r.URL.Path)
+		log.Println("handling", r.URL.Path)
 		if b, err := ioutil.ReadAll(r.Body); err != nil {
 			http.Error(w, fmt.Sprintf(`"%v"`, err), http.StatusBadRequest)
 		} else if result, err := handler(b, p); err != nil {
