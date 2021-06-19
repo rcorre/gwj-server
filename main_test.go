@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"net/http"
 
@@ -48,6 +49,10 @@ func (s *Suite) get(path string, out interface{}) int {
 
 func (s *Suite) post(path string, body interface{}, out interface{}) int {
 	return s.req(http.MethodPost, path, body, out)
+}
+
+func (s *Suite) put(path string, body interface{}, out interface{}) int {
+	return s.req(http.MethodPut, path, body, out)
 }
 
 func (s *Suite) TestPlayers() {
@@ -101,4 +106,13 @@ func (s *Suite) TestPlayers() {
 	s.Equal(pl, plot{ID: 0})
 	s.Equal(s.get("/players/1/plots/5", &pl), 200)
 	s.Equal(pl, plot{ID: 5})
+
+	now := time.Now()
+	pl.Item = ITEM_CARROT_SEED
+	s.Equal(s.put("/players/1/plots/5", &pl, &pl), 200)
+	s.Equal(pl, plot{
+		ID:         5,
+		Item:       ITEM_CARROT_SEED,
+		Transition: now.Add(10 * time.Second).Unix(),
+	})
 }

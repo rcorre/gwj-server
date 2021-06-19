@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/julienschmidt/httprouter"
 
@@ -17,13 +18,18 @@ import (
 
 const PLOTS_PER_PLAYER = 6
 
+const (
+	ITEM_NONE = iota
+	ITEM_CARROT_SEED
+)
+
 type server struct {
 	db *sql.DB
 }
 
 type plot struct {
 	ID         int64
-	Content    int64
+	Item       int64
 	Transition int64
 }
 
@@ -31,6 +37,19 @@ type player struct {
 	ID    int64
 	Name  string
 	Plots map[int64]plot
+}
+
+func setTransitionTime(p *plot) error {
+	now := time.Now()
+	switch p.Item {
+	case ITEM_CARROT_SEED:
+		p.Transition = now.Add(time.Second * 10).Unix()
+	case ITEM_NONE:
+		p.Transition = 0
+	default:
+		return fmt.Errorf("Unknown item %v", p.Item)
+	}
+	return nil
 }
 
 func (s *server) createTables() error {
@@ -47,7 +66,7 @@ func (s *server) createTables() error {
 		"CREATE TABLE IF NOT EXISTS plots(" +
 			"id integer," +
 			"player_id integer REFERENCES players(id)," +
-			"content integer NOT NULL DEFAULT(0)," +
+			"item integer NOT NULL DEFAULT(0)," +
 			"transition integer NOT NULL DEFAULT(0)," +
 			"PRIMARY KEY(id, player_id)" +
 			")",
@@ -57,30 +76,65 @@ func (s *server) createTables() error {
 	return nil
 }
 
-func (s *server) getPlot(_ []byte, p httprouter.Params) (interface{}, error) {
+func getPlayerPlotID(p httprouter.Params) (int64, int64, error) {
 	playerID, err := strconv.ParseInt(p.ByName("player_id"), 10, 64)
 	if err != nil {
-		return nil, err
+		return 0, 0, err
 	}
 
-	var res plot
+	plotID, err := strconv.ParseInt(p.ByName("plot_id"), 10, 64)
+	return playerID, plotID, err
+}
 
-	res.ID, err = strconv.ParseInt(p.ByName("plot_id"), 10, 64)
+func (s *server) getPlot(_ []byte, p httprouter.Params) (interface{}, error) {
+	playerID, plotID, err := getPlayerPlotID(p)
 	if err != nil {
 		return nil, err
 	}
 
+	res := plot{ID: plotID}
+
 	if err := s.db.QueryRow(
-		" SELECT content, transition"+
+		" SELECT item, transition"+
 			" FROM plots"+
 			" WHERE player_id = $1 "+
 			" AND id = $2 ",
 		playerID,
-		res.ID,
-	).Scan(&res.Content, &res.Transition); err != nil {
+		plotID,
+	).Scan(&res.Item, &res.Transition); err != nil {
 		return nil, err
 	}
 	return res, nil
+}
+
+func (s *server) putPlot(req []byte, p httprouter.Params) (interface{}, error) {
+	playerID, plotID, err := getPlayerPlotID(p)
+	if err != nil {
+		return nil, err
+	}
+
+	var newPlot plot
+	if err := json.Unmarshal(req, &newPlot); err != nil {
+		return nil, err
+	}
+
+	if err := setTransitionTime(&newPlot); err != nil {
+		return nil, err
+	}
+
+	if err := s.db.QueryRow(
+		"UPDATE plots"+
+			" SET item = $1, transition = $2"+
+			" WHERE player_id = $3 "+
+			" AND id = $4 ",
+		newPlot.Item,
+		newPlot.Transition,
+		playerID,
+		plotID,
+	).Err(); err != nil {
+		return nil, err
+	}
+	return newPlot, nil
 }
 
 func (s *server) getPlayers(_ []byte, _ httprouter.Params) (interface{}, error) {
@@ -107,7 +161,7 @@ func (s *server) getPlayers(_ []byte, _ httprouter.Params) (interface{}, error) 
 	}
 
 	rows, err := s.db.Query(
-		" SELECT players.id, plots.id, content, transition" +
+		" SELECT players.id, plots.id, item, transition" +
 			" FROM players JOIN plots" +
 			" on players.id = plots.player_id")
 	if err != nil {
@@ -117,7 +171,7 @@ func (s *server) getPlayers(_ []byte, _ httprouter.Params) (interface{}, error) 
 	for rows.Next() {
 		var playerID int64
 		var p plot
-		if err := rows.Scan(&playerID, &p.ID, &p.Content, &p.Transition); err != nil {
+		if err := rows.Scan(&playerID, &p.ID, &p.Item, &p.Transition); err != nil {
 			return nil, err
 		}
 
@@ -203,6 +257,7 @@ func newServer() http.Handler {
 	router := httprouter.New()
 	router.GET("/players", handle(s.getPlayers))
 	router.GET("/players/:player_id/plots/:plot_id", handle(s.getPlot))
+	router.PUT("/players/:player_id/plots/:plot_id", handle(s.putPlot))
 	router.POST("/players", handle(s.addPlayer))
 
 	return router
