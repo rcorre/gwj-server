@@ -1,4 +1,5 @@
 #!/bin/sh -x
+systemctl is-active docker >/dev/null || sudo systemctl start docker
 POSTGRES_PASSWORD=abc123
 CONTAINER_NAME=gwj-postgres
 POSTGRES_PASSWORD=mysecretpassword

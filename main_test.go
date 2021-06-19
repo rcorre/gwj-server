@@ -1,96 +1,65 @@
 package main
 
 import (
-	"database/sql"
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"net/http"
 
 	_ "github.com/lib/pq"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
 
-func toJSON(data interface{}) []byte {
-	b, err := json.Marshal(data)
+type Suite struct {
+	suite.Suite
+	server http.Handler
+}
+
+func (s *Suite) SetupTest() {
+	s.server = newServer()
+}
+
+func TestExampleTestSuite(t *testing.T) {
+	suite.Run(t, new(Suite))
+}
+
+func (s *Suite) req(method string, path string, body interface{}, out interface{}) int {
+	b, err := json.Marshal(body)
 	if err != nil {
 		panic(err)
 	}
-	return b
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(method, path, bytes.NewReader(b))
+	s.server.ServeHTTP(w, r)
+
+	respBytes := w.Body.Bytes()
+	if err := json.Unmarshal(respBytes, out); err != nil {
+		panic(fmt.Errorf("failed to unmarshal %s: %v", respBytes, err))
+	}
+	return w.Code
 }
 
-func setup(t *testing.T) http.Handler {
-	pg, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
-	if err != nil {
-		panic(err)
-	}
-
-	/*
-		if _, err := pg.Exec("DROP TABLE IF EXISTS records"); err != nil {
-			panic(err)
-		}
-		t.Cleanup(func() { pg.Exec("DROP TABLE IF EXISTS records") })
-	*/
-
-	d := db{pg}
-	if err := d.Init(); err != nil {
-		panic(err)
-	}
-	return newMux(d)
+func (s *Suite) get(path string, out interface{}) int {
+	return s.req(http.MethodGet, path, nil, out)
 }
 
-func TestV1Users(t *testing.T) {
-	v1 := setup(t)
-	get := func() []string {
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/v1/users", nil)
-		v1.ServeHTTP(w, r)
-		assert.Equal(t, w.Code, http.StatusOK)
-		var res []string
-		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
-			t.Errorf("Failed to unmarshal %s, %v", w.Body.Bytes(), err)
-		}
-		return res
-	}
-	put := func(name string) (int, string) {
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("PUT", "/v1/users/"+name, nil)
-		v1.ServeHTTP(w, r)
-		assert.NotEmpty(t, w.Body.String())
-		if w.Code != 200 {
-			return w.Code, w.Body.String()
-		}
-		var res string
-		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
-			t.Errorf("Failed to unmarshal %s, %v", w.Body.Bytes(), err)
-		}
-		return w.Code, res
-	}
-	check := func(name, auth string) {
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", "/v1/auth", nil)
-		r.Header.Set("Authorization", name+":"+auth)
-		v1.ServeHTTP(w, r)
-		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, "true", w.Body.String())
-	}
+func (s *Suite) post(path string, body interface{}, out interface{}) int {
+	return s.req(http.MethodPost, path, body, out)
+}
 
+func (s *Suite) TestPlayers() {
 	// no records yet
-	assert.Equal(t, []string{}, get())
+	var players []player
+	s.Equal(s.get("/players", &players), 200)
+	s.Empty(players)
 
-	code, fooAuth := put("foo")
-	assert.EqualValues(t, code, 200)
-	assert.EqualValues(t, []string{"foo"}, get())
+	var newPlayer player
+	s.Equal(s.post("/players", map[string]string{"name": "foo", "auth": "abcde"}, &newPlayer), 200)
+	s.Equal(newPlayer, player{ID: 1, Name: "foo"})
 
-	code, barAuth := put("bar")
-	assert.EqualValues(t, code, 200)
-	assert.EqualValues(t, []string{"foo", "bar"}, get())
-
-	check("foo", fooAuth)
-	check("bar", barAuth)
-
-	code, _ = put("foo")
-	assert.EqualValues(t, code, 500)
+	s.Equal(s.post("/players", map[string]string{"name": "bar", "auth": "123de"}, &newPlayer), 200)
+	s.Equal(newPlayer, player{ID: 2, Name: "bar"})
 }
