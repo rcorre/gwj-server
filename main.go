@@ -21,6 +21,7 @@ const PLOTS_PER_PLAYER = 6
 const (
 	ITEM_NONE = iota
 	ITEM_CARROT_SEED
+	ITEM_CARROT
 )
 
 // for mocking time in tests
@@ -60,6 +61,35 @@ func (s *server) setTransitionTime(p *plot) error {
 		return fmt.Errorf("Unknown item %v", p.Item)
 	}
 	return nil
+}
+
+func (s *server) updatePlot(playerID int64, p *plot) error {
+	now := s.clock.Now().Unix()
+	if p.Transition == 0 || p.Transition > now {
+		return nil
+	}
+
+	switch p.Item {
+	case ITEM_CARROT_SEED:
+		p.Item = ITEM_CARROT
+		p.Transition = 0
+	case ITEM_NONE:
+		log.Println("invalid transition: ", p.Item, playerID, p.ID)
+		return nil
+	default:
+		return fmt.Errorf("Unknown item %v", p.Item)
+	}
+
+	return s.db.QueryRow(
+		"UPDATE plots"+
+			" SET item = $1, transition = $2"+
+			" WHERE player_id = $3 "+
+			" AND id = $4 ",
+		p.Item,
+		p.Transition,
+		playerID,
+		p.ID,
+	).Err()
 }
 
 func (s *server) createTables() error {
@@ -114,7 +144,9 @@ func (s *server) getPlot(_ []byte, p httprouter.Params) (interface{}, error) {
 	).Scan(&res.Item, &res.Transition); err != nil {
 		return nil, err
 	}
-	return res, nil
+
+	err = s.updatePlot(playerID, &res)
+	return res, err
 }
 
 func (s *server) putPlot(req []byte, p httprouter.Params) (interface{}, error) {

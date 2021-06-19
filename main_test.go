@@ -124,4 +124,22 @@ func (s *Suite) TestPlayers() {
 		Item:       ITEM_CARROT_SEED,
 		Transition: startTime + 10,
 	})
+
+	// don't transition yet
+	s.clock.now = startTime + 1
+	s.Equal(s.get("/players/1/plots/5", &pl), 200)
+	s.Equal(pl, plot{
+		ID:         5,
+		Item:       ITEM_CARROT_SEED,
+		Transition: startTime + 10,
+	})
+
+	// transition
+	s.clock.now = startTime + 11
+	s.Equal(s.get("/players/1/plots/5", &pl), 200)
+	s.Equal(pl, plot{
+		ID:         5,
+		Item:       ITEM_CARROT,
+		Transition: 0,
+	})
 }
