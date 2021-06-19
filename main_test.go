@@ -51,8 +51,17 @@ func (s *Suite) post(path string, body interface{}, out interface{}) int {
 }
 
 func (s *Suite) TestPlayers() {
+	emptyPlots := map[int64]plot{
+		0: {ID: 0},
+		1: {ID: 1},
+		2: {ID: 2},
+		3: {ID: 3},
+		4: {ID: 4},
+		5: {ID: 5},
+	}
+
 	// no records yet
-	var players []player
+	players := map[int64]player{}
 	s.Equal(s.get("/players", &players), 200)
 	s.Empty(players)
 
@@ -60,6 +69,29 @@ func (s *Suite) TestPlayers() {
 	s.Equal(s.post("/players", map[string]string{"name": "foo", "auth": "abcde"}, &newPlayer), 200)
 	s.Equal(newPlayer, player{ID: 1, Name: "foo"})
 
+	s.Equal(s.get("/players", &players), 200)
+	s.Equal(players, map[int64]player{
+		1: {
+			ID:    1,
+			Name:  "foo",
+			Plots: emptyPlots,
+		},
+	})
+
 	s.Equal(s.post("/players", map[string]string{"name": "bar", "auth": "123de"}, &newPlayer), 200)
 	s.Equal(newPlayer, player{ID: 2, Name: "bar"})
+
+	s.Equal(s.get("/players", &players), 200)
+	s.Equal(players, map[int64]player{
+		1: {
+			ID:    1,
+			Name:  "foo",
+			Plots: emptyPlots,
+		},
+		2: {
+			ID:    2,
+			Name:  "bar",
+			Plots: emptyPlots,
+		},
+	})
 }
