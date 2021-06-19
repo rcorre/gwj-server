@@ -94,4 +94,11 @@ func (s *Suite) TestPlayers() {
 			Plots: emptyPlots,
 		},
 	})
+
+	var pl plot
+
+	s.Equal(s.get("/players/1/plots/0", &pl), 200)
+	s.Equal(pl, plot{ID: 0})
+	s.Equal(s.get("/players/1/plots/5", &pl), 200)
+	s.Equal(pl, plot{ID: 5})
 }

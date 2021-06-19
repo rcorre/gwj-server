@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/julienschmidt/httprouter"
 
@@ -54,6 +55,32 @@ func (s *server) createTables() error {
 		return err
 	}
 	return nil
+}
+
+func (s *server) getPlot(_ []byte, p httprouter.Params) (interface{}, error) {
+	playerID, err := strconv.ParseInt(p.ByName("player_id"), 10, 64)
+	if err != nil {
+		return nil, err
+	}
+
+	var res plot
+
+	res.ID, err = strconv.ParseInt(p.ByName("plot_id"), 10, 64)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.db.QueryRow(
+		" SELECT content, transition"+
+			" FROM plots"+
+			" WHERE player_id = $1 "+
+			" AND id = $2 ",
+		playerID,
+		res.ID,
+	).Scan(&res.Content, &res.Transition); err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
 func (s *server) getPlayers(_ []byte, _ httprouter.Params) (interface{}, error) {
@@ -175,6 +202,7 @@ func newServer() http.Handler {
 
 	router := httprouter.New()
 	router.GET("/players", handle(s.getPlayers))
+	router.GET("/players/:player_id/plots/:plot_id", handle(s.getPlot))
 	router.POST("/players", handle(s.addPlayer))
 
 	return router
